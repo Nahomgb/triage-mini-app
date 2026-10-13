@@ -1,0 +1,1547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<meta name="description" content="Triage Medical Consultancy — Intelligent medical history-taking, vital signs, lab ordering, and triage for Telegram Mini App."/>
+<title>Triage Medical — Clinical Assessment</title>
+
+<!-- Telegram WebApp SDK -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<!-- html2pdf via CDN (bundle includes jsPDF + html2canvas) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Serif+Ethiopic:wght@400;600;700&display=swap" rel="stylesheet"/>
+
+<style>
+/* ─────────────────────────── DESIGN TOKENS ─────────────────────────── */
+:root{
+  --bg:          var(--tg-theme-bg-color,#0c0e18);
+  --bg2:         var(--tg-theme-secondary-bg-color,#131726);
+  --text:        var(--tg-theme-text-color,#e4e8f5);
+  --hint:        var(--tg-theme-hint-color,#6b7db3);
+  --link:        var(--tg-theme-link-color,#5c9ce6);
+  --btn:         var(--tg-theme-button-color,#1560d4);
+  --btn-text:    var(--tg-theme-button-text-color,#fff);
+
+  --blue:        #1560d4;
+  --blue-l:      #1e88e5;
+  --blue-glow:   rgba(21,96,212,.38);
+  --teal:        #00b8d4;
+  --green:       #00c853;
+  --amber:       #ffab00;
+  --red:         #f44336;
+  --purple:      #7c4dff;
+  --pink:        #e91e63;
+
+  --t-red:       #c62828;
+  --t-yellow:    #e65100;
+  --t-green:     #2e7d32;
+
+  --glass:       rgba(255,255,255,.05);
+  --glass-b:     rgba(255,255,255,.09);
+  --shadow:      0 8px 32px rgba(0,0,0,.45);
+
+  --r-xs:  6px;
+  --r-sm:  10px;
+  --r-md:  14px;
+  --r-lg:  20px;
+  --r-xl:  28px;
+
+  --ease:  cubic-bezier(.4,0,.2,1);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:16px;-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{
+  font-family:'Inter',system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  overflow-x:hidden;
+  line-height:1.6;
+}
+
+/* Ambient background */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 5%,rgba(21,96,212,.16) 0%,transparent 60%),
+    radial-gradient(ellipse 60% 50% at 85% 95%,rgba(0,184,212,.11) 0%,transparent 60%),
+    radial-gradient(ellipse 50% 40% at 50% 50%,rgba(124,77,255,.05) 0%,transparent 70%);
+  z-index:0;
+}
+
+/* ─── LAYOUT ─────────────────────────────────────────────────────────── */
+#app{position:relative;z-index:1;max-width:480px;margin:0 auto;padding-bottom:110px}
+
+/* ─── HEADER ─────────────────────────────────────────────────────────── */
+.hdr{
+  position:sticky;top:0;z-index:100;
+  padding:14px 18px 10px;
+  background:linear-gradient(180deg,var(--bg) 68%,transparent);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+}
+.hdr-brand{display:flex;align-items:center;gap:11px;margin-bottom:12px}
+.hdr-icon{
+  width:40px;height:40px;border-radius:11px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--blue),var(--teal));
+  display:flex;align-items:center;justify-content:center;font-size:19px;
+  box-shadow:0 4px 18px var(--blue-glow);
+  animation:pulse-icon 3s ease-in-out infinite;
+}
+@keyframes pulse-icon{
+  0%,100%{box-shadow:0 4px 18px var(--blue-glow)}
+  50%{box-shadow:0 4px 28px rgba(21,96,212,.6),0 0 0 5px rgba(21,96,212,.09)}
+}
+.hdr-title{font-size:15px;font-weight:800;line-height:1.2}
+.hdr-sub{font-size:10px;color:var(--hint);text-transform:uppercase;letter-spacing:.05em;margin-top:1px}
+
+/* ─── STEPPER ─────────────────────────────────────────────────────────── */
+.stepper{display:flex;align-items:center;gap:0}
+.s-item{display:flex;flex-direction:column;align-items:center;flex:1;position:relative}
+.s-bub{
+  width:30px;height:30px;border-radius:50%;
+  border:2px solid var(--glass-b);background:var(--glass);
+  color:var(--hint);font-size:11px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .3s var(--ease);z-index:2;position:relative;
+}
+.s-item.active .s-bub{
+  background:linear-gradient(135deg,var(--blue),var(--blue-l));
+  border-color:var(--blue-l);color:#fff;
+  box-shadow:0 0 0 4px rgba(21,96,212,.22),0 4px 12px var(--blue-glow);
+  transform:scale(1.12);
+}
+.s-item.done .s-bub{background:linear-gradient(135deg,#1b5e20,var(--green));border-color:var(--green);color:#fff}
+.s-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--hint);margin-top:3px;white-space:nowrap}
+.s-item.active .s-lbl{color:var(--blue-l)}
+.s-item.done .s-lbl{color:var(--green)}
+.s-line{flex:1;height:2px;background:var(--glass-b);margin-bottom:16px;transition:.5s var(--ease)}
+.s-line.filled{background:linear-gradient(90deg,var(--green),var(--blue))}
+
+/* ─── SCREEN ─────────────────────────────────────────────────────────── */
+.screen{display:none;padding:6px 18px 0;animation:slide-up .32s var(--ease) both}
+.screen.active{display:block}
+@keyframes slide-up{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:translateY(0)}}
+
+/* ─── CARDS ─────────────────────────────────────────────────────────── */
+.card{
+  background:var(--glass);border:1px solid var(--glass-b);
+  border-radius:var(--r-lg);padding:18px;margin-bottom:14px;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  box-shadow:var(--shadow);transition:border-color .18s var(--ease);
+}
+.card:hover{border-color:rgba(255,255,255,.15)}
+.card-title{
+  font-size:10px;font-weight:800;text-transform:uppercase;
+  letter-spacing:.1em;color:var(--blue-l);margin-bottom:14px;
+  display:flex;align-items:center;gap:7px;
+}
+.card-title::before{
+  content:'';display:block;width:3px;height:13px;flex-shrink:0;border-radius:2px;
+  background:linear-gradient(180deg,var(--blue),var(--teal));
+}
+
+/* ─── FORM ─────────────────────────────────────────────────────────── */
+.fg{margin-bottom:13px}
+.lbl{display:block;font-size:11px;font-weight:600;color:var(--hint);margin-bottom:5px;letter-spacing:.02em}
+.req{color:var(--red);margin-left:2px}
+.inp,.sel,.ta{
+  width:100%;background:rgba(255,255,255,.055);
+  border:1.5px solid var(--glass-b);border-radius:var(--r-sm);
+  padding:10px 13px;font-family:'Inter',sans-serif;
+  font-size:14px;font-weight:500;color:var(--text);
+  outline:none;-webkit-appearance:none;appearance:none;
+  transition:border-color .18s var(--ease),box-shadow .18s var(--ease),background .18s var(--ease);
+}
+.inp::placeholder,.ta::placeholder{color:rgba(255,255,255,.22);font-weight:400}
+.inp:focus,.sel:focus,.ta:focus{
+  border-color:var(--blue-l);background:rgba(21,96,212,.07);
+  box-shadow:0 0 0 3px rgba(21,96,212,.17);
+}
+.inp.err,.sel.err{border-color:var(--red)}
+.sel{
+  cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236b7db3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 11px center;padding-right:34px;
+}
+.sel option{background:#1a2035;color:var(--text)}
+.ta{resize:vertical;min-height:72px;line-height:1.5}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.emsg{font-size:10px;color:var(--red);margin-top:3px;display:none}
+.emsg.on{display:block}
+
+/* ─── VITALS GRID ─────────────────────────────────────────────────────── */
+.vgrid{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:4px}
+.vc{
+  background:rgba(255,255,255,.035);border:1.5px solid var(--glass-b);
+  border-radius:var(--r-md);padding:13px 11px;
+  display:flex;flex-direction:column;gap:7px;
+  position:relative;overflow:hidden;transition:border-color .18s var(--ease);
+}
+.vc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--vc-c,linear-gradient(90deg,var(--blue),var(--teal)))}
+.vc:nth-child(1){--vc-c:linear-gradient(90deg,#e91e63,#f48fb1)}
+.vc:nth-child(2){--vc-c:linear-gradient(90deg,#1560d4,#64b5f6)}
+.vc:nth-child(3){--vc-c:linear-gradient(90deg,#7c4dff,#ce93d8)}
+.vc:nth-child(4){--vc-c:linear-gradient(90deg,#f57c00,#ffcc02)}
+.vc:nth-child(5){--vc-c:linear-gradient(90deg,#00b8d4,#80deea)}
+.vc:nth-child(6){--vc-c:linear-gradient(90deg,#00c853,#69f0ae)}
+.vi{font-size:18px;line-height:1}
+.vl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--hint)}
+.vu{font-size:9px;color:rgba(255,255,255,.28);margin-top:-3px}
+.vc .inp{padding:7px 9px;font-size:17px;font-weight:700;text-align:center;background:rgba(255,255,255,.035);border-radius:var(--r-xs);border:1px solid var(--glass-b)}
+.bp-wrap{grid-column:span 2;background:rgba(255,255,255,.035);border:1.5px solid var(--glass-b);border-radius:var(--r-md);padding:13px 11px;position:relative;overflow:hidden}
+.bp-wrap::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#7c4dff,#e91e63)}
+.bp-row{display:flex;align-items:center;gap:9px;margin-top:9px}
+.bp-slash{font-size:20px;font-weight:700;color:var(--hint);align-self:flex-end;padding-bottom:4px}
+.bp-sub{font-size:9px;color:var(--hint);text-align:center;margin-top:3px}
+.bp-half{flex:1}
+
+/* ─── SYMPTOM TOGGLES ─────────────────────────────────────────────────── */
+.sx-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.sx-grid.wide{grid-template-columns:1fr}
+.sx-toggle{position:relative;cursor:pointer}
+.sx-toggle input{position:absolute;opacity:0;width:0;height:0}
+.sx-lbl{
+  display:flex;align-items:center;gap:7px;padding:9px 11px;
+  background:rgba(255,255,255,.035);border:1.5px solid var(--glass-b);
+  border-radius:var(--r-xs);font-size:11.5px;font-weight:500;
+  color:var(--hint);transition:all .18s var(--ease);user-select:none;cursor:pointer;
+}
+.sx-lbl .sxi{font-size:15px;flex-shrink:0}
+.sx-toggle input:checked+.sx-lbl{
+  background:linear-gradient(135deg,rgba(21,96,212,.22),rgba(21,96,212,.09));
+  border-color:var(--blue-l);color:#90caf9;
+  box-shadow:0 0 0 2px rgba(21,96,212,.15);
+}
+.sx-toggle input:checked+.sx-lbl .chk{background:var(--blue-l);border-color:var(--blue-l)}
+.chk{
+  width:14px;height:14px;border-radius:4px;
+  border:2px solid var(--glass-b);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  transition:.18s var(--ease);font-size:8px;color:#fff;
+}
+.sx-toggle input:checked+.sx-lbl .chk::after{content:'✓'}
+
+.sx-toggle.danger .sx-lbl{border-color:rgba(244,67,54,.25)}
+.sx-toggle.danger input:checked+.sx-lbl{
+  background:linear-gradient(135deg,rgba(244,67,54,.22),rgba(244,67,54,.08));
+  border-color:#ef5350;color:#ef9a9a;
+  box-shadow:0 0 0 2px rgba(244,67,54,.18);
+}
+.sx-toggle.danger input:checked+.sx-lbl .chk{background:#ef5350;border-color:#ef5350}
+
+.sx-detail{
+  display:none;margin-top:7px;padding:11px;
+  background:rgba(21,96,212,.07);border:1px solid rgba(21,96,212,.22);
+  border-radius:var(--r-xs);animation:fade-in .2s ease;
+}
+.sx-detail.on{display:block}
+@keyframes fade-in{from{opacity:0;transform:scaleY(.92);transform-origin:top}to{opacity:1;transform:scaleY(1)}}
+
+/* Pain Scale Slider */
+.slider-wrap{padding:4px 0}
+.slider{width:100%;accent-color:var(--blue-l);cursor:pointer}
+.slider-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--hint);margin-top:2px}
+.pain-badge{
+  display:inline-block;padding:2px 10px;border-radius:999px;
+  font-size:11px;font-weight:700;margin-top:4px;
+}
+
+/* ─── SEVERITY BADGE ROW ─────────────────────────────────────────────── */
+.sev-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:5px}
+.sev-opt{flex:1;min-width:fit-content}
+.sev-opt input{position:absolute;opacity:0;width:0;height:0}
+.sev-opt label{
+  display:block;text-align:center;padding:6px 10px;
+  border-radius:var(--r-xs);border:1.5px solid var(--glass-b);
+  font-size:11px;font-weight:700;cursor:pointer;transition:.18s var(--ease);
+  color:var(--hint);
+}
+.sev-opt.mild input:checked+label{background:rgba(46,125,50,.25);border-color:#66bb6a;color:#a5d6a7}
+.sev-opt.mod  input:checked+label{background:rgba(230,81,0,.25);border-color:#ffa726;color:#ffcc80}
+.sev-opt.sev  input:checked+label{background:rgba(198,40,40,.25);border-color:#ef5350;color:#ef9a9a}
+
+/* ─── LAB ORDERS ─────────────────────────────────────────────────────── */
+.lab-panel{
+  background:rgba(0,200,83,.05);border:1.5px solid rgba(0,200,83,.22);
+  border-radius:var(--r-lg);padding:18px;margin-bottom:14px;
+}
+.lab-title{font-size:12px;font-weight:700;color:var(--green);margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.lab-pulse{width:7px;height:7px;border-radius:50%;background:var(--green);animation:blink 1.2s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.65)}}
+.lab-cat-title{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--hint);margin-bottom:5px}
+.lab-item{
+  display:flex;align-items:flex-start;gap:9px;padding:7px 11px;
+  background:rgba(255,255,255,.035);border-radius:var(--r-xs);
+  margin-bottom:4px;border-left:3px solid var(--green);
+  animation:item-pop .24s cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes item-pop{from{opacity:0;transform:translateX(-10px) scale(.95)}to{opacity:1;transform:translateX(0) scale(1)}}
+.lab-item-name{font-size:12.5px;font-weight:600}
+.lab-item-reason{font-size:10px;color:var(--hint);margin-top:1px}
+.no-lab{text-align:center;color:var(--hint);font-size:12px;padding:16px 0}
+
+/* ─── USS RECOMMENDATIONS ─────────────────────────────────────────────── */
+.uss-panel{
+  background:rgba(0,184,212,.05);border:1.5px solid rgba(0,184,212,.25);
+  border-radius:var(--r-lg);padding:18px;margin-bottom:14px;
+}
+.uss-title{font-size:12px;font-weight:700;color:var(--teal);margin-bottom:11px;display:flex;align-items:center;gap:7px}
+.uss-item{
+  display:flex;align-items:flex-start;gap:9px;padding:7px 11px;
+  background:rgba(255,255,255,.035);border-radius:var(--r-xs);
+  margin-bottom:4px;border-left:3px solid var(--teal);
+  font-size:12px;font-weight:500;
+}
+
+/* ─── ADVICE PANEL ─────────────────────────────────────────────────────── */
+.advice-panel{border-radius:var(--r-lg);padding:20px;margin-bottom:14px;position:relative;overflow:hidden}
+.advice-panel.red{
+  background:linear-gradient(135deg,rgba(198,40,40,.22),rgba(198,40,40,.10));
+  border:2px solid rgba(244,67,54,.5);
+  box-shadow:0 0 30px rgba(244,67,54,.18);
+}
+.advice-panel.yellow{
+  background:linear-gradient(135deg,rgba(230,81,0,.22),rgba(230,81,0,.10));
+  border:2px solid rgba(255,171,0,.5);
+  box-shadow:0 0 30px rgba(255,171,0,.12);
+}
+.advice-panel.green{
+  background:linear-gradient(135deg,rgba(46,125,50,.22),rgba(46,125,50,.10));
+  border:2px solid rgba(0,200,83,.4);
+  box-shadow:0 0 30px rgba(0,200,83,.12);
+}
+
+.advice-header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.advice-icon-wrap{
+  width:52px;height:52px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:26px;
+}
+.advice-level-text{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;margin-bottom:2px}
+.advice-headline{font-size:17px;font-weight:800;line-height:1.3}
+
+.advice-actions{display:flex;flex-direction:column;gap:7px;margin-bottom:12px}
+.advice-action{
+  display:flex;align-items:flex-start;gap:10px;padding:10px 13px;
+  border-radius:var(--r-sm);font-size:12.5px;font-weight:500;
+}
+.advice-panel.red    .advice-action{background:rgba(244,67,54,.12);color:#ffcdd2}
+.advice-panel.yellow .advice-action{background:rgba(255,171,0,.12);color:#ffe0b2}
+.advice-panel.green  .advice-action{background:rgba(0,200,83,.12);color:#c8e6c9}
+.advice-action .aidot{font-size:16px;flex-shrink:0;margin-top:1px}
+
+.advice-disclaimer{
+  font-size:10px;color:var(--hint);padding-top:10px;
+  border-top:1px solid var(--glass-b);line-height:1.5;
+}
+
+/* ─── TRIAGE BADGE ─────────────────────────────────────────────────────── */
+.triage-badge{
+  display:inline-flex;align-items:center;gap:8px;padding:9px 20px;
+  border-radius:999px;font-size:13px;font-weight:800;letter-spacing:.06em;
+  text-transform:uppercase;margin-bottom:14px;
+}
+.triage-badge.red   {background:rgba(198,40,40,.3);border:2px solid var(--t-red);color:#ef9a9a}
+.triage-badge.yellow{background:rgba(230,81,0,.3);border:2px solid var(--t-yellow);color:#ffcc80}
+.triage-badge.green {background:rgba(46,125,50,.3);border:2px solid var(--t-green);color:#a5d6a7}
+.t-pulse{width:9px;height:9px;border-radius:50%;background:currentColor}
+
+/* ─── SUMMARY KV ─────────────────────────────────────────────────────── */
+.kv{display:flex;flex-direction:column;gap:2px}
+.kvr{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--glass-b)}
+.kvr:last-child{border-bottom:none}
+.kvk{font-size:11px;color:var(--hint);font-weight:500;flex-shrink:0;padding-right:10px}
+.kvv{font-size:12px;color:var(--text);font-weight:600;text-align:right}
+.kvv.flag-red{color:#ef9a9a}
+.kvv.flag-amber{color:#ffcc80}
+.kvv.flag-green{color:#a5d6a7}
+
+/* ─── BUTTONS ─────────────────────────────────────────────────────────── */
+.btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;padding:13px 18px;border:none;border-radius:var(--r-md);
+  font-family:'Inter',sans-serif;font-size:14px;font-weight:700;
+  cursor:pointer;transition:all .18s var(--ease);position:relative;overflow:hidden;
+  -webkit-tap-highlight-color:transparent;
+}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:linear-gradient(135deg,var(--blue),var(--blue-l));color:#fff}
+.btn-sec{background:var(--glass);border:1.5px solid var(--glass-b);color:var(--text)}
+.btn-pdf{background:linear-gradient(135deg,#880e4f,var(--pink));color:#fff}
+.btn-tg{background:linear-gradient(135deg,#0077b5,#00aff0);color:#fff}
+.btn-danger{background:linear-gradient(135deg,#b71c1c,var(--red));color:#fff}
+
+.btn-grp{display:flex;flex-direction:column;gap:9px;padding:0 18px;margin-bottom:18px}
+
+/* ─── NAV FOOTER ─────────────────────────────────────────────────────── */
+.nav-foot{
+  position:fixed;bottom:0;left:0;right:0;z-index:200;
+  padding:10px 18px 18px;max-width:480px;margin:0 auto;
+  background:linear-gradient(0deg,var(--bg) 55%,transparent);
+  display:flex;gap:9px;
+}
+
+/* ─── TOAST ─────────────────────────────────────────────────────────── */
+.toast{
+  position:fixed;top:18px;left:50%;
+  transform:translateX(-50%) translateY(-80px);
+  background:rgba(20,30,55,.97);border:1px solid var(--glass-b);
+  border-radius:var(--r-md);padding:11px 18px;
+  font-size:12.5px;font-weight:600;color:var(--text);
+  z-index:9999;transition:transform .32s cubic-bezier(.34,1.56,.64,1);
+  white-space:nowrap;box-shadow:0 8px 28px rgba(0,0,0,.55);
+}
+.toast.on{transform:translateX(-50%) translateY(0)}
+
+/* ─── LOADING OVERLAY ─────────────────────────────────────────────────── */
+.loading{
+  display:none;position:fixed;inset:0;z-index:9998;
+  background:rgba(0,0,0,.75);backdrop-filter:blur(8px);
+  align-items:center;justify-content:center;flex-direction:column;gap:14px;
+}
+.loading.on{display:flex}
+.ring{
+  width:50px;height:50px;border-radius:50%;
+  border:4px solid rgba(255,255,255,.1);border-top-color:var(--blue-l);
+  animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ring-txt{font-size:13px;color:rgba(255,255,255,.8);font-weight:600}
+
+/* ─── VITALS INTERPRETATION BAR ─────────────────────────────────────── */
+.interp-item{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:5px 0;border-bottom:1px solid var(--glass-b);font-size:11.5px;
+}
+.interp-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.interp-dot.g{background:var(--green)}
+.interp-dot.a{background:var(--amber)}
+.interp-dot.r{background:var(--red)}
+.interp-val{font-weight:600;text-align:right}
+.interp-val.g{color:#a5d6a7}
+.interp-val.a{color:#ffcc80}
+.interp-val.r{color:#ef9a9a}
+
+/* ─── SCREEN INTRO ─────────────────────────────────────────────────────── */
+.s-intro{text-align:center;padding:6px 0 16px}
+.s-intro h2{font-size:19px;font-weight:800;margin-bottom:4px}
+.s-intro p{font-size:12px;color:var(--hint)}
+
+/* ═══════════════════════════════════════════════════
+   PDF CONTAINER — Offscreen rendering for html2pdf.js
+   ═══════════════════════════════════════════════════ */
+#pdf-wrap{
+  position:fixed;top:0;left:-9999px;
+  width:794px; /* Standard A4 width at 96 DPI */
+  z-index:-9999;
+  opacity:0;
+  pointer-events:none;
+}
+#pdf-wrap.rendering{
+  opacity:1;
+  left:0;
+  top:0;
+  z-index:-1;
+}
+#pdf-doc{
+  width:794px;
+  background:#fff;
+  color:#111;
+  font-family:'Inter','Helvetica Neue',Arial,sans-serif;
+  font-size:9.5pt;
+  padding:15mm 15mm;
+  line-height:1.5;
+}
+
+/* PDF Page Structures */
+.P-page{
+  width:100%;
+  min-height:1050px;
+  box-sizing:border-box;
+  position:relative;
+  background:#fff;
+}
+.P-pagebreak{
+  page-break-before:always;
+  break-before:page;
+}
+
+.P-hdr{text-align:center;border-bottom:2.5px solid #0033aa;padding-bottom:10px;margin-bottom:12px}
+.P-clinic{font-size:16pt;font-weight:900;color:#0033aa;letter-spacing:.02em}
+.P-amharic{font-family:'Noto Serif Ethiopic',serif;font-size:10.5pt;color:#0033aa;margin-top:2px;font-weight:700}
+.P-subtitle{font-size:8pt;color:#666;text-transform:uppercase;letter-spacing:.12em;margin-top:2px}
+.P-doctitle{font-size:11.5pt;font-weight:800;color:#002288;margin-top:6px;text-transform:uppercase;letter-spacing:.04em}
+.P-ref{font-size:7.5pt;color:#888;margin-top:2px}
+
+.P-sec{margin-top:10px}
+.P-seclbl{
+  font-size:8.5pt;font-weight:800;text-transform:uppercase;letter-spacing:.1em;
+  color:#0033aa;border-left:3px solid #0033aa;padding-left:6px;margin-bottom:6px;
+}
+.P-tbl{width:100%;border-collapse:collapse;font-size:8.5pt}
+.P-tbl td{padding:4px 7px;border:1px solid #d0d5e8}
+.P-tbl td:first-child{font-weight:700;background:#f0f4ff;width:35%;color:#333}
+.P-vit{width:100%;border-collapse:collapse;font-size:8pt}
+.P-vit th{background:#0033aa;color:#fff;padding:4px 6px;font-size:7.5pt;text-transform:uppercase;letter-spacing:.04em}
+.P-vit td{padding:4px 6px;border:1px solid #d0d5e8;text-align:center}
+.P-vit tr:nth-child(even) td{background:#f6f8ff}
+
+.P-triage-box{display:inline-block;padding:4px 14px;border-radius:4px;font-size:11pt;font-weight:900;letter-spacing:.06em;text-transform:uppercase}
+.P-triage-box.red{background:#ffcdd2;color:#b71c1c;border:2px solid #f44336}
+.P-triage-box.yellow{background:#fff3e0;color:#bf360c;border:2px solid #f57c00}
+.P-triage-box.green{background:#e8f5e9;color:#1b5e20;border:2px solid #43a047}
+
+.P-lab-card{
+  border:1px solid #c5d2f0;border-radius:6px;padding:8px 12px;margin-bottom:8px;background:#f8fafe
+}
+.P-lab-title{font-size:8.5pt;font-weight:800;color:#0033aa;text-transform:uppercase;margin-bottom:4px}
+.P-lab-item{font-size:8.5pt;padding:3px 0;border-bottom:1px dashed #e0e6f5;display:flex;justify-content:space-between}
+.P-lab-item:last-child{border-bottom:none}
+
+.P-advice-box{padding:8px 12px;border-radius:5px;margin-bottom:8px}
+.P-advice-box.red{background:#ffebee;border:1.5px solid #f44336}
+.P-advice-box.yellow{background:#fff8e1;border:1.5px solid #f57c00}
+.P-advice-box.green{background:#e8f5e9;border:1.5px solid #43a047}
+
+.P-stamp-area{margin-top:25px;display:flex;justify-content:space-between;align-items:flex-end}
+.P-sigblock{text-align:center;width:220px;position:relative}
+.P-sigline{border-top:1.5px solid #333;margin-top:35px;margin-bottom:3px}
+.P-siglbl{font-size:7.5pt;color:#555}
+.P-foot{position:absolute;bottom:10mm;left:15mm;right:15mm;border-top:1px solid #d0d5e8;padding-top:5px;text-align:center;font-size:7pt;color:#aaa}
+.P-watermark{position:absolute;top:45%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:48pt;font-weight:900;color:rgba(0,51,170,.03);white-space:nowrap;pointer-events:none;z-index:0}
+</style>
+</head>
+<body>
+
+<!-- TOAST -->
+<div class="toast" id="toast" role="alert" aria-live="polite"></div>
+
+<!-- LOADING OVERLAY -->
+<div class="loading" id="loading" role="status" aria-label="Processing">
+  <div class="ring"></div>
+  <div class="ring-txt" id="ring-txt">Generating PDF…</div>
+</div>
+
+<!-- PDF CONTAINER -->
+<div id="pdf-wrap"><div id="pdf-doc"></div></div>
+
+<!-- ══════════════════════ MAIN APP ══════════════════════ -->
+<div id="app">
+
+<!-- HEADER -->
+<header class="hdr">
+  <div class="hdr-brand">
+    <div class="hdr-icon">🏥</div>
+    <div>
+      <div class="hdr-title">Triage Medical Consultancy</div>
+      <div class="hdr-sub">ትሪያጅ ሜዲካል ኮንሰልተንሲ</div>
+    </div>
+  </div>
+  <!-- STEPPER -->
+  <nav class="stepper" aria-label="Assessment steps">
+    <div class="s-item active" id="si-1"><div class="s-bub">1</div><span class="s-lbl">Patient</span></div>
+    <div class="s-line" id="sl-12"></div>
+    <div class="s-item" id="si-2"><div class="s-bub">2</div><span class="s-lbl">Vitals</span></div>
+    <div class="s-line" id="sl-23"></div>
+    <div class="s-item" id="si-3"><div class="s-bub">3</div><span class="s-lbl">Sx Pt1</span></div>
+    <div class="s-line" id="sl-34"></div>
+    <div class="s-item" id="si-4"><div class="s-bub">4</div><span class="s-lbl">Sx Pt2</span></div>
+    <div class="s-line" id="sl-45"></div>
+    <div class="s-item" id="si-5"><div class="s-bub">✦</div><span class="s-lbl">Report</span></div>
+  </nav>
+</header>
+
+<!-- ══════════ SCREEN 1 — DEMOGRAPHICS ══════════ -->
+<section class="screen active" id="scr-1" aria-labelledby="s1t">
+
+  <div class="card">
+    <div class="card-title" id="s1t">Patient Information</div>
+    <div class="fg">
+      <label class="lbl" for="fullName">Full Name <span class="req">*</span></label>
+      <input class="inp" id="fullName" type="text" placeholder="e.g. Abebe Tadesse" autocomplete="name" autocapitalize="words"/>
+      <div class="emsg" id="e-fullName">Full name required (min 2 characters)</div>
+    </div>
+    <div class="row2">
+      <div class="fg">
+        <label class="lbl" for="age">Age <span class="req">*</span></label>
+        <input class="inp" id="age" type="number" placeholder="Years" min="0" max="130"/>
+        <div class="emsg" id="e-age">Enter valid age</div>
+      </div>
+      <div class="fg">
+        <label class="lbl" for="sex">Biological Sex <span class="req">*</span></label>
+        <select class="sel" id="sex">
+          <option value="">Select…</option>
+          <option>Male</option><option>Female</option><option>Other</option>
+        </select>
+        <div class="emsg" id="e-sex">Please select sex</div>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="fg">
+        <label class="lbl" for="weight">Weight (kg)</label>
+        <input class="inp" id="weight" type="number" placeholder="e.g. 70" min="1" max="400"/>
+      </div>
+      <div class="fg">
+        <label class="lbl" for="height">Height (cm)</label>
+        <input class="inp" id="height" type="number" placeholder="e.g. 170" min="30" max="250"/>
+      </div>
+    </div>
+    <div class="fg">
+      <label class="lbl" for="chiefComplaint">Chief Complaint <span class="req">*</span></label>
+      <input class="inp" id="chiefComplaint" type="text" placeholder="e.g. Severe chest pain and difficulty breathing"/>
+      <div class="emsg" id="e-chiefComplaint">Describe chief complaint (min 4 chars)</div>
+    </div>
+    <div class="row2">
+      <div class="fg">
+        <label class="lbl" for="durVal">Duration <span class="req">*</span></label>
+        <input class="inp" id="durVal" type="number" placeholder="e.g. 3" min="1"/>
+        <div class="emsg" id="e-durVal">Enter duration</div>
+      </div>
+      <div class="fg">
+        <label class="lbl" for="durUnit">Unit</label>
+        <select class="sel" id="durUnit">
+          <option value="minutes">Minutes</option>
+          <option value="hours">Hours</option>
+          <option value="days" selected>Days</option>
+          <option value="weeks">Weeks</option>
+          <option value="months">Months</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Medical History & Allergies</div>
+    <div class="fg">
+      <label class="lbl" for="pmh">Past Medical History</label>
+      <textarea class="ta" id="pmh" rows="2" placeholder="e.g. Hypertension, Type 2 Diabetes, Asthma…"></textarea>
+    </div>
+    <div class="fg">
+      <label class="lbl" for="meds">Current Medications</label>
+      <textarea class="ta" id="meds" rows="2" placeholder="e.g. Metformin 500mg, Amlodipine 5mg…"></textarea>
+    </div>
+    <div class="row2">
+      <div class="fg">
+        <label class="lbl" for="allergies">Known Allergies</label>
+        <input class="inp" id="allergies" type="text" placeholder="e.g. Penicillin, Sulfa"/>
+      </div>
+      <div class="fg">
+        <label class="lbl" for="smoking">Smoking Status</label>
+        <select class="sel" id="smoking">
+          <option value="">Select…</option>
+          <option>Never smoker</option>
+          <option>Ex-smoker</option>
+          <option>Current smoker</option>
+        </select>
+      </div>
+    </div>
+    <div class="fg">
+      <label class="lbl" for="assocSx">Additional Symptoms / Notes</label>
+      <textarea class="ta" id="assocSx" rows="2" placeholder="Any additional clinical details…"></textarea>
+    </div>
+  </div>
+
+</section>
+
+<!-- ══════════ SCREEN 2 — VITAL SIGNS ══════════ -->
+<section class="screen" id="scr-2" aria-labelledby="s2t">
+
+  <div class="card">
+    <div class="card-title" id="s2t">Vital Signs</div>
+    <div class="vgrid">
+
+      <div class="vc">
+        <div class="vi">🫁</div><div class="vl">SpO₂</div><div class="vu">Oxygen Saturation %</div>
+        <input class="inp" id="spo2" type="number" placeholder="98" min="50" max="100" inputmode="numeric"/>
+      </div>
+
+      <div class="vc">
+        <div class="vi">💓</div><div class="vl">Pulse Rate</div><div class="vu">Beats per minute</div>
+        <input class="inp" id="pulse" type="number" placeholder="72" min="20" max="300" inputmode="numeric"/>
+      </div>
+
+      <div class="vc">
+        <div class="vi">🌡️</div><div class="vl">Temperature</div><div class="vu">Degrees Celsius °C</div>
+        <input class="inp" id="temp" type="number" placeholder="36.5" min="30" max="45" step="0.1" inputmode="decimal"/>
+      </div>
+
+      <div class="vc">
+        <div class="vi">🌬️</div><div class="vl">Resp. Rate</div><div class="vu">Breaths / minute</div>
+        <input class="inp" id="rr" type="number" placeholder="16" min="4" max="70" inputmode="numeric"/>
+      </div>
+
+      <div class="vc">
+        <div class="vi">🧠</div><div class="vl">AVPU / GCS</div><div class="vu">Consciousness</div>
+        <select class="sel" id="gcs" style="font-size:11px;padding:6px 8px">
+          <option value="">Select…</option>
+          <option value="A">A — Alert</option>
+          <option value="V">V — Responds to Voice</option>
+          <option value="P">P — Responds to Pain</option>
+          <option value="U">U — Unresponsive</option>
+        </select>
+      </div>
+
+      <div class="vc">
+        <div class="vi">🩸</div><div class="vl">Blood Glucose</div><div class="vu">mmol/L</div>
+        <input class="inp" id="glucose" type="number" placeholder="5.5" min="1" max="40" step="0.1" inputmode="decimal"/>
+      </div>
+
+      <div class="bp-wrap">
+        <div class="vi">🩺</div><div class="vl">Blood Pressure</div><div class="vu">mmHg (Systolic / Diastolic)</div>
+        <div class="bp-row">
+          <div class="bp-half">
+            <input class="inp" id="bpS" type="number" placeholder="120" min="50" max="300" inputmode="numeric"/>
+            <div class="bp-sub">Systolic</div>
+          </div>
+          <div class="bp-slash">/</div>
+          <div class="bp-half">
+            <input class="inp" id="bpD" type="number" placeholder="80" min="30" max="200" inputmode="numeric"/>
+            <div class="bp-sub">Diastolic</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- LIVE INTERPRETATION -->
+  <div class="card" id="vit-interp-card" style="display:none">
+    <div class="card-title">Vital Signs Interpretation</div>
+    <div id="vit-interp-body"></div>
+  </div>
+
+</section>
+
+<!-- ══════════ SCREEN 3 — SYMPTOMS PART 1 ══════════ -->
+<section class="screen" id="scr-3" aria-labelledby="s3t">
+
+  <!-- RESPIRATORY -->
+  <div class="card">
+    <div class="card-title" id="s3t">🫁 Respiratory System</div>
+    <div class="sx-grid">
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-sob"/><span class="sx-lbl"><span class="sxi">😮‍💨</span>Shortness of Breath<span class="chk"></span></span></label>
+      <label class="sx-toggle"><input type="checkbox" id="sx-cough"/><span class="sx-lbl"><span class="sxi">🤧</span>Cough<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-wheeze"/><span class="sx-lbl"><span class="sxi">🌀</span>Wheeze<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-stridor"/><span class="sx-lbl"><span class="sxi">⚠️</span>Stridor<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-hemoptysis"/><span class="sx-lbl"><span class="sxi">🩸</span>Coughing Blood<span class="chk"></span></span></label>
+      <label class="sx-toggle"><input type="checkbox" id="sx-sputum"/><span class="sx-lbl"><span class="sxi">💛</span>Productive Sputum<span class="chk"></span></span></label>
+      <label class="sx-toggle"><input type="checkbox" id="sx-pleurisy"/><span class="sx-lbl"><span class="sxi">🔪</span>Pleuritic Chest Pain<span class="chk"></span></span></label>
+      <label class="sx-toggle"><input type="checkbox" id="sx-orthopnoea"/><span class="sx-lbl"><span class="sxi">🛏️</span>Orthopnoea<span class="chk"></span></span></label>
+    </div>
+
+    <div class="sx-detail" id="d-sob">
+      <div class="fg" style="margin-bottom:9px">
+        <label class="lbl">SOB Severity</label>
+        <div class="sev-row">
+          <div class="sev-opt mild"><input type="radio" name="sob-sev" id="sob-m" value="Mild"><label for="sob-m">Mild</label></div>
+          <div class="sev-opt mod"><input type="radio" name="sob-sev" id="sob-mod" value="Moderate"><label for="sob-mod">Moderate</label></div>
+          <div class="sev-opt sev"><input type="radio" name="sob-sev" id="sob-s" value="Severe"><label for="sob-s">Severe</label></div>
+        </div>
+      </div>
+      <div class="fg">
+        <label class="lbl" for="sob-onset">Onset of SOB</label>
+        <select class="sel" id="sob-onset">
+          <option value="">Select…</option>
+          <option>Sudden (seconds-minutes)</option>
+          <option>Gradual (days-weeks)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="sx-detail" id="d-cough">
+      <div class="row2">
+        <div class="fg" style="margin-bottom:0">
+          <label class="lbl" for="cough-type">Cough Character</label>
+          <select class="sel" id="cough-type">
+            <option value="">Select…</option>
+            <option>Dry / Non-productive</option>
+            <option>Productive — clear sputum</option>
+            <option>Productive — yellow/green sputum</option>
+          </select>
+        </div>
+        <div class="fg" style="margin-bottom:0">
+          <label class="lbl" for="cough-dur">Duration</label>
+          <input class="inp" id="cough-dur" type="text" placeholder="e.g. 5 days"/>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CARDIOVASCULAR -->
+  <div class="card">
+    <div class="card-title">💔 Cardiovascular System</div>
+    <div class="sx-grid">
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-cp"/><span class="sx-lbl"><span class="sxi">💔</span>Chest Pain<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-palpitations"/><span class="sx-lbl"><span class="sxi">💗</span>Palpitations<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-syncope"/><span class="sx-lbl"><span class="sxi">😵</span>Syncope / Collapse<span class="chk"></span></span></label>
+      <label class="sx-toggle"><input type="checkbox" id="sx-edema"/><span class="sx-lbl"><span class="sxi">🦵</span>Leg Swelling / Edema<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-dvt"/><span class="sx-lbl"><span class="sxi">🩸</span>DVT / Leg Redness<span class="chk"></span></span></label>
+    </div>
+
+    <div class="sx-detail" id="d-cp">
+      <div class="fg" style="margin-bottom:9px">
+        <label class="lbl">Pain Severity (0–10)</label>
+        <div class="slider-wrap">
+          <input type="range" class="slider" id="cp-score" min="0" max="10" value="5" oninput="updatePainBadge('cp-score','cp-badge')"/>
+          <div class="slider-labels"><span>0 — None</span><span>5 — Moderate</span><span>10 — Worst</span></div>
+          <span class="pain-badge" id="cp-badge" style="background:rgba(255,171,0,.2);color:#ffcc80">5/10</span>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="fg" style="margin-bottom:0">
+          <label class="lbl" for="cp-char">Character</label>
+          <select class="sel" id="cp-char">
+            <option value="">Select…</option>
+            <option>Crushing/Pressure</option><option>Sharp/Stabbing</option>
+            <option>Burning</option><option>Dull Ache</option>
+          </select>
+        </div>
+        <div class="fg" style="margin-bottom:0">
+          <label class="lbl" for="cp-rad">Radiation</label>
+          <input class="inp" id="cp-rad" type="text" placeholder="e.g. left arm, jaw"/>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FEVER / SYSTEMIC -->
+  <div class="card">
+    <div class="card-title">🌡️ Fever & Systemic</div>
+    <div class="sx-grid">
+      <label class="sx-toggle"><input type="checkbox" id="sx-fever"/><span class="sx-lbl"><span class="sxi">🤒</span>Fever<span class="chk"></span></span></label>
+      <label class="sx-toggle"><input type="checkbox" id="sx-chills"/><span class="sx-lbl"><span class="sxi">🥶</span>Chills / Rigors<span class="chk"></span></span></label>
+      <label class="sx-toggle"><input type="checkbox" id="sx-nightsweats"/><span class="sx-lbl"><span class="sxi">💦</span>Night Sweats<span class="chk"></span></span></label>
+      <label class="sx-toggle"><input type="checkbox" id="sx-weightloss"/><span class="sx-lbl"><span class="sxi">⚖️</span>Weight Loss<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-sepsis-sx"/><span class="sx-lbl"><span class="sxi">🚨</span>Altered Mental State + Fever<span class="chk"></span></span></label>
+    </div>
+  </div>
+
+</section>
+
+<!-- ══════════ SCREEN 4 — SYMPTOMS PART 2 ══════════ -->
+<section class="screen" id="scr-4" aria-labelledby="s4t">
+
+  <!-- NEUROLOGICAL -->
+  <div class="card">
+    <div class="card-title" id="s4t">🧠 Neurological System</div>
+    <div class="sx-grid">
+      <label class="sx-toggle"><input type="checkbox" id="sx-headache"/><span class="sx-lbl"><span class="sxi">🤕</span>Headache<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-thunderclap"/><span class="sx-lbl"><span class="sxi">⚡</span>Thunderclap Headache<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-seizure"/><span class="sx-lbl"><span class="sxi">⚡</span>Seizure / Fit<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-confusion"/><span class="sx-lbl"><span class="sxi">😵‍💫</span>Confusion<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-weakness"/><span class="sx-lbl"><span class="sxi">💪</span>Limb Weakness<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-facial-droop"/><span class="sx-lbl"><span class="sxi">😶</span>Facial Droop<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-slurred"/><span class="sx-lbl"><span class="sxi">🗣️</span>Slurred Speech<span class="chk"></span></span></label>
+      <label class="sx-toggle"><input type="checkbox" id="sx-neckstiff"/><span class="sx-lbl"><span class="sxi">🦒</span>Neck Stiffness<span class="chk"></span></span></label>
+    </div>
+  </div>
+
+  <!-- GI / ABDOMINAL -->
+  <div class="card">
+    <div class="card-title">🫃 Gastrointestinal System</div>
+    <div class="sx-grid">
+      <label class="sx-toggle"><input type="checkbox" id="sx-nausea"/><span class="sx-lbl"><span class="sxi">🤢</span>Nausea<span class="chk"></span></span></label>
+      <label class="sx-toggle"><input type="checkbox" id="sx-vomiting"/><span class="sx-lbl"><span class="sxi">🤮</span>Vomiting<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-haematemesis"/><span class="sx-lbl"><span class="sxi">🩸</span>Vomiting Blood<span class="chk"></span></span></label>
+      <label class="sx-toggle"><input type="checkbox" id="sx-diarrhea"/><span class="sx-lbl"><span class="sxi">🚽</span>Diarrhoea<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-pr-bleed"/><span class="sx-lbl"><span class="sxi">🩸</span>Rectal Bleeding<span class="chk"></span></span></label>
+      <label class="sx-toggle"><input type="checkbox" id="sx-abdo-pain"/><span class="sx-lbl"><span class="sxi">🫃</span>Abdominal Pain<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-rigidity"/><span class="sx-lbl"><span class="sxi">🪨</span>Peritonism / Rigidity<span class="chk"></span></span></label>
+      <label class="sx-toggle"><input type="checkbox" id="sx-jaundice"/><span class="sx-lbl"><span class="sxi">🟡</span>Jaundice<span class="chk"></span></span></label>
+    </div>
+  </div>
+
+  <!-- GENITOURINARY -->
+  <div class="card">
+    <div class="card-title">🚿 Genitourinary System</div>
+    <div class="sx-grid">
+      <label class="sx-toggle"><input type="checkbox" id="sx-dysuria"/><span class="sx-lbl"><span class="sxi">🔥</span>Dysuria<span class="chk"></span></span></label>
+      <label class="sx-toggle"><input type="checkbox" id="sx-frequency"/><span class="sx-lbl"><span class="sxi">🚽</span>Urinary Frequency<span class="chk"></span></span></label>
+      <label class="sx-toggle"><input type="checkbox" id="sx-hematuria"/><span class="sx-lbl"><span class="sxi">🩸</span>Haematuria<span class="chk"></span></span></label>
+      <label class="sx-toggle"><input type="checkbox" id="sx-flank-pain"/><span class="sx-lbl"><span class="sxi">🫙</span>Flank Pain<span class="chk"></span></span></label>
+      <label class="sx-toggle danger"><input type="checkbox" id="sx-pv-bleed"/><span class="sx-lbl"><span class="sxi">🩸</span>Abnormal PV Bleed<span class="chk"></span></span></label>
+    </div>
+  </div>
+
+  <!-- USS RECOMMENDATIONS -->
+  <div class="uss-panel" id="uss-panel" style="display:none">
+    <div class="uss-title">🔊 Ultrasound / Imaging Recommendations</div>
+    <div id="uss-content"></div>
+  </div>
+
+  <!-- LAB ORDERS -->
+  <div class="lab-panel" id="lab-panel">
+    <div class="lab-title"><div class="lab-pulse"></div>Auto-Generated Lab Orders</div>
+    <div id="lab-content"><div class="no-lab">Select symptoms above to generate laboratory orders.</div></div>
+  </div>
+
+</section>
+
+<!-- ══════════ SCREEN 5 — SUMMARY & ADVICE ══════════ -->
+<section class="screen" id="scr-5" aria-labelledby="s5t">
+
+  <div class="s-intro">
+    <h2 id="s5t">Clinical Report</h2>
+    <p>Triage summary, advice & investigation orders</p>
+  </div>
+
+  <!-- Triage badge -->
+  <div style="text-align:center;margin-bottom:6px">
+    <div class="triage-badge green" id="triage-badge">
+      <div class="t-pulse"></div>
+      <span id="triage-text">GREEN — Non-Urgent</span>
+    </div>
+  </div>
+
+  <!-- ADVICE PANEL -->
+  <div class="advice-panel green" id="advice-panel">
+    <div class="advice-header">
+      <div class="advice-icon-wrap" id="advice-icon">🟢</div>
+      <div>
+        <div class="advice-level-text" id="advice-level-lbl">Non-Urgent — Green Level</div>
+        <div class="advice-headline" id="advice-headline">Monitor at Home</div>
+      </div>
+    </div>
+    <div class="advice-actions" id="advice-actions"></div>
+    <div class="advice-disclaimer" id="advice-disclaimer"></div>
+  </div>
+
+  <!-- Patient summary -->
+  <div class="card">
+    <div class="card-title">Patient Details</div>
+    <div class="kv" id="sum-patient"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Vital Signs</div>
+    <div class="kv" id="sum-vitals"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Reported Symptoms</div>
+    <div class="kv" id="sum-sx"></div>
+  </div>
+
+  <div class="card" style="border-color:rgba(0,200,83,.3)">
+    <div class="card-title" style="color:var(--green)">Laboratory Orders</div>
+    <div id="sum-labs"></div>
+  </div>
+
+  <div class="card" id="sum-uss-card" style="border-color:rgba(0,184,212,.3);display:none">
+    <div class="card-title" style="color:var(--teal)">Imaging / USS Recommendations</div>
+    <div id="sum-uss"></div>
+  </div>
+
+  <!-- ACTION BUTTONS -->
+  <div class="btn-grp">
+    <button class="btn btn-danger" id="btn-emergency" onclick="callEmergency()" style="display:none">
+      🚨 CALL EMERGENCY NOW
+    </button>
+    <button class="btn btn-pdf" id="btn-pdf" onclick="generatePDF()">
+      📄 Download Triage PDF
+    </button>
+    <button class="btn btn-tg" id="btn-tg" onclick="submitToTelegram()">
+      ✈️ Submit to Telegram
+    </button>
+    <button class="btn btn-sec" onclick="restartAssessment()">
+      🔄 New Assessment
+    </button>
+  </div>
+
+</section>
+
+</div><!-- /app -->
+
+<!-- NAV FOOTER -->
+<div class="nav-foot" id="nav-foot">
+  <button class="btn btn-sec" id="btn-back" onclick="navBack()" style="display:none;max-width:120px">← Back</button>
+  <button class="btn btn-primary" id="btn-next" onclick="navNext()">Continue →</button>
+</div>
+
+<!-- ════════════════ JAVASCRIPT ════════════════ -->
+<script>
+'use strict';
+// ── Telegram init ─────────────────────────────────────────────────
+const TG = window.Telegram?.WebApp;
+if(TG){
+  TG.ready();TG.expand();
+  const tp=TG.themeParams||{};
+  const r=document.documentElement.style;
+  if(tp.bg_color)    r.setProperty('--bg',tp.bg_color);
+  if(tp.text_color)  r.setProperty('--text',tp.text_color);
+  if(tp.hint_color)  r.setProperty('--hint',tp.hint_color);
+  if(tp.button_color)r.setProperty('--btn',tp.button_color);
+}
+
+// ── State ─────────────────────────────────────────────────────────
+let step=1;
+const STEPS=5;
+const S={
+  demo:{},vitals:{},sx:{},
+  labs:[],uss:[],
+  triage:'green',
+  adviceItems:[],
+  ts:''
+};
+
+// ── Navigation ────────────────────────────────────────────────────
+function navNext(){
+  if(!validateStep(step))return;
+  collectStep(step);
+  goTo(step+1);
+}
+function navBack(){if(step>1)goTo(step-1)}
+
+function goTo(n){
+  document.getElementById(`scr-${step}`)?.classList.remove('active');
+  markStep(step,'done');
+  step=n;
+  document.getElementById(`scr-${step}`)?.classList.add('active');
+  markStep(step,'active');
+  window.scrollTo({top:0,behavior:'smooth'});
+
+  const back=document.getElementById('btn-back');
+  const next=document.getElementById('btn-next');
+  const foot=document.getElementById('nav-foot');
+  back.style.display=step>1?'flex':'none';
+  if(step===STEPS){
+    buildReport();
+    foot.style.display='none';
+  } else {
+    foot.style.display='flex';
+    next.textContent=step===STEPS-1?'Generate Report →':'Continue →';
+  }
+
+  if(step===3||step===4){attachSxListeners();updateOrders()}
+  if(step===2)attachVitalListeners();
+}
+
+function markStep(n,cls){
+  const el=document.getElementById(`si-${n}`);
+  if(!el)return;
+  el.classList.remove('active','done');
+  el.classList.add(cls);
+  if(n<STEPS&&cls==='done'){
+    document.getElementById(`sl-${n}${n+1}`)?.classList.add('filled');
+  }
+}
+
+// ── Validation ────────────────────────────────────────────────────
+function validateStep(s){
+  let ok=true;
+  if(s===1){
+    ok=vf('fullName',v=>v.trim().length>=2)&&ok;
+    ok=vf('age',v=>v!==''&&+v>=0&&+v<=130)&&ok;
+    ok=vf('sex',v=>v!=='')&&ok;
+    ok=vf('chiefComplaint',v=>v.trim().length>=4)&&ok;
+    ok=vf('durVal',v=>v!==''&&+v>0)&&ok;
+  }
+  if(s===2){
+    const any=['spo2','pulse','temp','rr','bpS','bpD','glucose'].some(id=>g(id)!=='');
+    if(!any){toast('⚠️ Please enter at least one vital sign.');return false}
+  }
+  return ok;
+}
+function vf(id,rule){
+  const el=document.getElementById(id);
+  const em=document.getElementById('e-'+id);
+  if(!el)return true;
+  const ok=rule(el.value);
+  el.classList.toggle('err',!ok);
+  if(em)em.classList.toggle('on',!ok);
+  return ok;
+}
+
+// ── Data collection ───────────────────────────────────────────────
+function collectStep(s){
+  if(s===1){
+    const w=g('weight'),h=g('height');
+    const bmi=(w&&h)?((+w/(+h/100)**2).toFixed(1)):null;
+    S.demo={
+      fullName:g('fullName'),age:g('age'),sex:g('sex'),
+      weight:w,height:h,bmi,
+      chiefComplaint:g('chiefComplaint'),
+      duration:`${g('durVal')}${g('durUnit')}`,
+      pmh:g('pmh'),meds:g('meds'),allergies:g('allergies'),
+      smoking:g('smoking'),assocSx:g('assocSx')
+    };
+  }
+  if(s===2){
+    S.vitals={spo2:g('spo2'),pulse:g('pulse'),temp:g('temp'),
+              rr:g('rr'),gcs:g('gcs'),glucose:g('glucose'),
+              bpS:g('bpS'),bpD:g('bpD')};
+  }
+  if(s===3||s===4){
+    S.sx=gatherSx();
+    compute();
+  }
+}
+
+function g(id){return(document.getElementById(id)?.value??'').trim()}
+function chk(id){return document.getElementById(id)?.checked??false}
+
+function gatherSx(){
+  return{
+    // Respiratory
+    sob:chk('sx-sob'),cough:chk('sx-cough'),wheeze:chk('sx-wheeze'),
+    stridor:chk('sx-stridor'),hemoptysis:chk('sx-hemoptysis'),sputum:chk('sx-sputum'),
+    pleurisy:chk('sx-pleurisy'),orthopnoea:chk('sx-orthopnoea'),
+    sobSev:g('sob-sev')||getRadio('sob-sev'),sobOnset:g('sob-onset'),
+    coughType:g('cough-type'),coughDur:g('cough-dur'),
+    // Cardiovascular
+    chestPain:chk('sx-cp'),palpitations:chk('sx-palpitations'),syncope:chk('sx-syncope'),
+    edema:chk('sx-edema'),dvt:chk('sx-dvt'),
+    cpScore:g('cp-score'),cpChar:g('cp-char'),cpRad:g('cp-rad'),
+    // Fever/Systemic
+    fever:chk('sx-fever'),chills:chk('sx-chills'),nightSweats:chk('sx-nightsweats'),
+    weightLoss:chk('sx-weightloss'),sepsisSx:chk('sx-sepsis-sx'),
+    // Neuro
+    headache:chk('sx-headache'),thunderclap:chk('sx-thunderclap'),
+    seizure:chk('sx-seizure'),confusion:chk('sx-confusion'),
+    weakness:chk('sx-weakness'),facialDroop:chk('sx-facial-droop'),
+    slurred:chk('sx-slurred'),neckStiff:chk('sx-neckstiff'),
+    // GI
+    nausea:chk('sx-nausea'),vomiting:chk('sx-vomiting'),haematemesis:chk('sx-haematemesis'),
+    diarrhea:chk('sx-diarrhea'),prBleed:chk('sx-pr-bleed'),
+    abdoPain:chk('sx-abdo-pain'),rigidity:chk('sx-rigidity'),jaundice:chk('sx-jaundice'),
+    // GU
+    dysuria:chk('sx-dysuria'),frequency:chk('sx-frequency'),hematuria:chk('sx-hematuria'),
+    flankPain:chk('sx-flank-pain'),pvBleed:chk('sx-pv-bleed'),
+  };
+}
+
+function getRadio(name){
+  const el=document.querySelector(`input[name="${name}"]:checked`);
+  return el?el.value:'';
+}
+
+// ── Clinical Engine ───────────────────────────────────────────────
+function compute(){
+  S.sx=S.sx||gatherSx();
+  S.vitals=S.vitals||{};
+  ['spo2','pulse','temp','rr','bpS','bpD','glucose','gcs'].forEach(id=>{
+    const v=g(id);if(v)S.vitals[id]=v;
+  });
+  computeLabs();
+  computeUSS();
+  computeTriage();
+  computeAdvice();
+}
+
+function computeLabs(){
+  const sx=S.sx, vt=S.vitals;
+  const spo2=parseFloat(vt.spo2)||100;
+  const temp=parseFloat(vt.temp)||37;
+  const bpS=parseInt(vt.bpS)||120;
+  const bpD=parseInt(vt.bpD)||80;
+  const pr=parseInt(vt.pulse)||80;
+
+  const labs=new Map();
+  const add=(key,name,cat,reason)=>labs.has(key)||labs.set(key,{name,cat,reason});
+
+  // Respiratory
+  if(sx.fever&&(sx.cough||sx.sob)){
+    add('CBC','Complete Blood Count (CBC)','Haematology','Fever + respiratory symptoms');
+    add('CRP','C-Reactive Protein (CRP)','Biochemistry','Fever/inflammation marker');
+    add('CXR','Chest X-Ray (PA View)','Radiology','Suspected lower respiratory infection');
+  }
+  if(spo2<92||temp>39.5){
+    add('CBC','Complete Blood Count (CBC)','Haematology','Severe respiratory/hypoxia workup');
+    add('CRP','C-Reactive Protein (CRP)','Biochemistry','Acute phase response');
+    add('ABG','Arterial Blood Gas (ABG)','Critical Care',`SpO₂ ${spo2}\% / Temp${temp}°C — gas exchange assessment`);
+    add('CXR','Chest X-Ray (PA View)','Radiology','Severe respiratory compromise');
+    add('ELEC','Serum Electrolytes (Na, K, Cl, HCO₃)','Biochemistry','Metabolic status');
+  }
+  if(sx.hemoptysis){
+    add('CBC','Complete Blood Count (CBC)','Haematology','Haemoptysis workup');
+    add('CXR','Chest X-Ray (PA View)','Radiology','Haemoptysis — lung pathology');
+    add('COAG','Coagulation Screen (PT/APTT/INR)','Haematology','Bleeding diathesis');
+    add('AFB','Sputum AFB × 3 (TB screen)','Microbiology','Haemoptysis — TB exclusion');
+  }
+
+  // Cardiovascular
+  if(sx.chestPain){
+    add('ECG','12-Lead ECG','Cardiology','Chest pain — ACS/arrhythmia screen');
+    add('TROP','High-Sensitivity Troponin I/T','Cardiology','Myocardial injury biomarker');
+    add('LIPID','Fasting Lipid Profile','Biochemistry','Cardiovascular risk stratification');
+    add('RFT','Renal Function Tests (Cr, BUN)','Biochemistry','Nephropathy / Baseline');
+    add('CXR','Chest X-Ray (PA View)','Radiology','Cardiac size, pulmonary oedema');
+  }
+  if(bpS>180&&bpD>120){
+    add('ECG','12-Lead ECG','Cardiology','Hypertensive crisis — cardiac assessment');
+    add('TROP','High-Sensitivity Troponin I/T','Cardiology','Hypertensive myocardial injury');
+    add('RFT','Renal Function Tests (Cr, BUN)','Biochemistry','Hypertensive nephropathy');
+    add('UA','Urinalysis — protein, casts','Microbiology','Hypertensive nephropathy');
+  }
+
+  // Fever / Infection
+  if(sx.fever&&!sx.cough&&!sx.sob&&!sx.dysuria){
+    add('CBC','Complete Blood Count (CBC)','Haematology','Fever of unknown origin');
+    add('CRP','C-Reactive Protein','Biochemistry','Systemic inflammation');
+    add('BLDCX','Blood Culture × 2 Sets','Microbiology','Bacteraemia / sepsis exclusion');
+    add('MALA','Malaria RDT + Thick/Thin Film','Parasitology','Endemic area febrile illness');
+  }
+
+  // GI
+  if(sx.diarrhea||sx.abdoPain){
+    add('STOOL','Stool Examination (R/E, Culture)','Microbiology','GI infection/parasitic disease');
+    add('ELEC','Serum Electrolytes','Biochemistry','Dehydration / electrolyte loss');
+    add('CBC','Full Blood Count','Haematology','Inflammatory workup');
+  }
+
+  // GU
+  if(sx.dysuria||sx.frequency||sx.hematuria||sx.flankPain){
+    add('UA','Urinalysis — Routine & Microscopy','Microbiology','UTI / renal pathology');
+    add('UCX','Urine Culture & Sensitivity','Microbiology','Bacterial identification');
+  }
+
+  S.labs=Array.from(labs.values());
+}
+
+function computeUSS(){
+  const sx=S.sx;
+  const uss=new Map();
+  const add=(key,name,reason)=>uss.has(key)||uss.set(key,{name,reason});
+
+  if(sx.abdoPain||sx.jaundice)   add('USS_ABD','Ultrasound Abdomen (USS)','Liver, gallbladder, bile ducts, pancreas, aorta');
+  if(sx.flankPain||sx.hematuria) add('USS_KUB','Ultrasound KUB','Renal stones, hydronephrosis, renal masses');
+  if(sx.pvBleed&&S.demo.sex==='Female') add('USS_PELV','Pelvic Ultrasound','Uterine/ovarian pathology');
+
+  S.uss=Array.from(uss.values());
+}
+
+function computeTriage(){
+  const sx=S.sx,vt=S.vitals;
+  const spo2=parseFloat(vt.spo2)||100;
+  const bpS=parseInt(vt.bpS)||120;
+  const bpD=parseInt(vt.bpD)||80;
+  const pr=parseInt(vt.pulse)||80;
+
+  const redConditions=[
+    spo2<90,bpS<90,bpS>180&&bpD>120,
+    pr>130||pr<40,
+    sx.seizure,sx.thunderclap,sx.facialDroop,sx.weakness,
+    sx.haematemesis,sx.rigidity,sx.sepsisSx
+  ];
+  if(redConditions.some(Boolean)){S.triage='red';return}
+
+  const yellowConditions=[
+    spo2<94,bpS>160,pr>100,
+    sx.chestPain,sx.sob&&(sx.sobSev==='Severe'),
+    sx.dvt,sx.hemoptysis,sx.palpitations
+  ];
+  if(yellowConditions.some(Boolean)){S.triage='yellow';return}
+
+  S.triage='green';
+}
+
+function computeAdvice(){
+  let headline,levelLbl,icon,items=[],disc;
+
+  if(S.triage==='red'){
+    headline='SEEK EMERGENCY CARE IMMEDIATELY';
+    levelLbl='🔴 Red — Emergency';
+    icon='🚨';
+    items=[
+      {icon:'📞',text:'CALL EMERGENCY SERVICES NOW (907 Ethiopia / 911)'},
+      {icon:'🏥',text:'Do NOT drive yourself — seek immediate emergency assistance'},
+      {icon:'📋',text:'Bring your medical history and this report to the emergency room'}
+    ];
+    disc='⚠️ Life-threatening findings detected. Immediate physician evaluation is mandatory.';
+  } else if(S.triage==='yellow'){
+    headline='Consult a Doctor Today';
+    levelLbl='🟡 Yellow — Urgent';
+    icon='⚠️';
+    items=[
+      {icon:'🏥',text:'Visit a hospital or urgent care clinic within 2–4 hours'},
+      {icon:'💧',text:'Maintain fluid intake and rest while awaiting evaluation'},
+      {icon:'📋',text:'Present this document to the triage nurse or doctor'}
+    ];
+    disc='🟡 Prompt clinical evaluation required. Monitor for worsening symptoms.';
+  } else {
+    headline='Monitor & Manage at Home';
+    levelLbl='🟢 Green — Non-Urgent';
+    icon='✅';
+    items=[
+      {icon:'🛏️',text:'Rest at home and ensure adequate hydration'},
+      {icon:'🌡️',text:'Monitor temperature and vital signs every 6–8 hours'},
+      {icon:'📅',text:'Book a routine doctor appointment if symptoms persist past 48 hours'}
+    ];
+    disc='🟢 Non-urgent clinical status. Seek immediate care if symptoms worsen.';
+  }
+
+  S.adviceItems={headline,levelLbl,icon,items,disc};
+}
+
+// ── Live orders update ─────────────────────────────────────────────
+function updateOrders(){
+  S.sx=gatherSx();
+  S.vitals={spo2:g('spo2'),pulse:g('pulse'),temp:g('temp'),rr:g('rr'),
+            bpS:g('bpS'),bpD:g('bpD'),glucose:g('glucose'),gcs:g('gcs')};
+  computeLabs();computeUSS();computeTriage();
+
+  const lc=document.getElementById('lab-content');
+  if(lc){
+    if(S.labs.length===0){
+      lc.innerHTML='<div class="no-lab">Select symptoms above to generate orders.</div>';
+    } else {
+      const grouped={};
+      S.labs.forEach(l=>{if(!grouped[l.cat])grouped[l.cat]=[];grouped[l.cat].push(l)});
+      lc.innerHTML=Object.entries(grouped).map(([cat,items])=>`
+        <div style="margin-bottom:10px">
+          <div class="lab-cat-title">${cat}</div>${items.map(l=>`<div class="lab-item">
+            <div>🧪</div>
+            <div><div class="lab-item-name">${l.name}</div><div class="lab-item-reason">${l.reason}</div></div>
+          </div>`).join('')}
+        </div>`).join('');
+    }
+  }
+
+  const up=document.getElementById('uss-panel');
+  const uc=document.getElementById('uss-content');
+  if(up&&uc){
+    up.style.display=S.uss.length>0?'block':'none';
+    uc.innerHTML=S.uss.map(u=>`<div class="uss-item">🔊 <div><strong>${u.name}</strong><br><span style="font-size:10px;color:var(--hint)">${u.reason}</span></div></div>`).join('');
+  }
+}
+
+// ── Vital signs live interpretation ──────────────────────────────
+function interpretVitals(){
+  const fields=[
+    {id:'spo2',fn:v=>{const n=parseFloat(v);if(isNaN(n))return null;
+      if(n<90)return{c:'r',t:`SpO₂ ${n}% — Critical Hypoxaemia`};
+      if(n<94)return{c:'a',t:`SpO₂ ${n}% — Low`};
+      return{c:'g',t:`SpO₂ ${n}% — Normal`};}},
+    {id:'temp',fn:v=>{const n=parseFloat(v);if(isNaN(n))return null;
+      if(n>38.5)return{c:'a',t:`${n}°C — Fever`};
+      return{c:'g',t:`${n}°C — Normal`};}},
+    {id:'pulse',fn:v=>{const n=parseInt(v);if(isNaN(n))return null;
+      if(n>100)return{c:'a',t:`${n} bpm — Tachycardia`};
+      return{c:'g',t:`${n} bpm — Normal`};}}
+  ];
+
+  const results=fields.map(f=>({label:f.id,res:f.fn(g(f.id))})).filter(x=>x.res);
+  const card=document.getElementById('vit-interp-card');
+  const body=document.getElementById('vit-interp-body');
+  if(!card||!body)return;
+  if(results.length===0){card.style.display='none';return}
+  card.style.display='block';
+  body.innerHTML=results.map(x=>`
+    <div class="interp-item">
+      <div class="interp-dot ${x.res.c}"></div>
+      <div class="interp-val ${x.res.c}">${x.res.t}</div>
+    </div>`).join('');
+}
+
+// ── Attach listeners ───────────────────────────────────────────────
+const SX_IDS=[
+  'sx-sob','sx-cough','sx-wheeze','sx-stridor','sx-hemoptysis','sx-sputum','sx-pleurisy','sx-orthopnoea',
+  'sx-cp','sx-palpitations','sx-syncope','sx-edema','sx-dvt',
+  'sx-fever','sx-chills','sx-nightsweats','sx-weightloss','sx-sepsis-sx',
+  'sx-headache','sx-thunderclap','sx-seizure','sx-confusion','sx-weakness','sx-facial-droop','sx-slurred','sx-neckstiff',
+  'sx-nausea','sx-vomiting','sx-haematemesis','sx-diarrhea','sx-pr-bleed','sx-abdo-pain','sx-rigidity','sx-jaundice',
+  'sx-dysuria','sx-frequency','sx-hematuria','sx-flank-pain','sx-pv-bleed'
+];
+
+function attachSxListeners(){
+  SX_IDS.forEach(id=>{
+    const el=document.getElementById(id);
+    if(el&&!el._l){
+      el._l=true;
+      el.addEventListener('change',()=>{
+        updateOrders();
+        const det=id==='sx-sob'?'d-sob':id==='sx-cough'?'d-cough':id==='sx-cp'?'d-cp':null;
+        if(det){const d=document.getElementById(det);if(d)d.classList.toggle('on',el.checked)}
+      });
+    }
+  });
+}
+
+function attachVitalListeners(){
+  ['spo2','pulse','temp','rr','bpS','bpD','glucose'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el&&!el._vl){el._vl=true;el.addEventListener('input',interpretVitals)}
+  });
+}
+
+function updatePainBadge(sliderId,badgeId){
+  const val=parseInt(document.getElementById(sliderId)?.value)||0;
+  const badge=document.getElementById(badgeId);
+  if(!badge)return;
+  badge.textContent=`${val}/10`;
+}
+
+// ── Build report (step 5) ─────────────────────────────────────────
+function buildReport(){
+  collectStep(3);collectStep(4);
+  S.ts=new Date().toLocaleString('en-GB');
+
+  const tb=document.getElementById('triage-badge');
+  const tt=document.getElementById('triage-text');
+  tb.className='triage-badge '+S.triage;
+  const tDesc={red:'🔴 RED — IMMEDIATE',yellow:'🟡 YELLOW — URGENT',green:'🟢 GREEN — Non-Urgent'};
+  tt.textContent=tDesc[S.triage];
+
+  const ap=document.getElementById('advice-panel');
+  ap.className='advice-panel '+S.triage;
+  document.getElementById('advice-icon').textContent=S.adviceItems.icon;
+  document.getElementById('advice-level-lbl').textContent=S.adviceItems.levelLbl;
+  document.getElementById('advice-headline').textContent=S.adviceItems.headline;
+  document.getElementById('advice-actions').innerHTML=S.adviceItems.items.map(a=>`<div class="advice-action"><span class="aidot">${a.icon}</span><span>${a.text}</span></div>`).join('');
+  document.getElementById('advice-disclaimer').textContent=S.adviceItems.disc;
+
+  document.getElementById('btn-emergency').style.display=S.triage==='red'?'flex':'none';
+
+  const d=S.demo;
+  document.getElementById('sum-patient').innerHTML=[
+    ['Full Name',d.fullName||'—'],
+    ['Age / Sex',`${d.age\vert{}\vert{}'—'} yrs / ${d.sex||'—'}`],
+    ['Chief Complaint',d.chiefComplaint||'—'],
+    ['Duration',d.duration||'—'],
+    ['Past History',d.pmh||'None'],
+    ['Medications',d.meds||'None'],
+    ['Allergies',d.allergies||'NKDA'],
+  ].map(([k,v])=>`<div class="kvr"><span class="kvk">${k}</span><span class="kvv">${v}</span></div>`).join('');
+
+  const vt=S.vitals;
+  document.getElementById('sum-vitals').innerHTML=[
+    ['SpO₂',vt.spo2?`${vt.spo2}%`:'—'],
+    ['Pulse',vt.pulse?`${vt.pulse} bpm`:'—'],
+    ['Temperature',vt.temp?`${vt.temp}°C`:'—'],
+    ['Blood Pressure',(vt.bpS&&vt.bpD)?`${vt.bpS}/${vt.bpD} mmHg`:'—'],
+  ].map(([k,v])=>`<div class="kvr"><span class="kvk">${k}</span><span class="kvv">${v}</span></div>`).join('');
+
+  const suml=document.getElementById('sum-labs');
+  suml.innerHTML=S.labs.length===0
+    ?'<div style="color:var(--hint);font-size:12px;padding:6px 0">No investigations triggered.</div>'
+    :S.labs.map(l=>`<div class="lab-item"><div>🧪</div><div><div class="lab-item-name">${l.name}</div><div class="lab-item-reason">${l.cat} —${l.reason}</div></div></div>`).join('');
+
+  const ussCard=document.getElementById('sum-uss-card');
+  const ussEl=document.getElementById('sum-uss');
+  ussCard.style.display=S.uss.length>0?'block':'none';
+  if(ussEl)ussEl.innerHTML=S.uss.map(u=>`<div class="uss-item">🔊 <div><strong>${u.name}</strong><br><span style="font-size:10px;color:var(--hint)">${u.reason}</span></div></div>`).join('');
+}
+
+// ── PDF GENERATION ENGINE ─────────────────────────────────────────
+function buildPDFHTML(){
+  const d=S.demo,vt=S.vitals,sx=S.sx;
+  const labs=S.labs,uss=S.uss;
+  const ref=`TMC-${Date.now().toString().slice(-8)}`;
+  const now=S.ts||new Date().toLocaleString('en-GB');
+
+  const activeSx=[];
+  const sxLabels=[
+    ['sob','Shortness of Breath'],['cough','Cough'],['hemoptysis','Haemoptysis'],
+    ['chestPain','Chest Pain'],['palpitations','Palpitations'],['syncope','Syncope'],
+    ['fever','Fever'],['headache','Headache'],['seizure','Seizure'],['confusion','Confusion'],
+    ['haematemesis','Vomiting Blood'],['prBleed','PR Bleeding'],['abdoPain','Abdominal Pain'],
+    ['dysuria','Dysuria'],['hematuria','Haematuria'],['pvBleed','PV Bleeding']
+  ];
+  sxLabels.forEach(([k,l])=>{if(sx[k])activeSx.push(l)});
+
+  const grouped={};
+  labs.forEach(l=>{if(!grouped[l.cat])grouped[l.cat]=[];grouped[l.cat].push(l)});
+
+  const tClass=S.triage;
+  const tDesc={red:'RED — IMMEDIATE',yellow:'YELLOW — URGENT',green:'GREEN — NON-URGENT'};
+  const adv=S.adviceItems;
+
+  // OFFICIAL CIRCULAR STAMP SVG
+  const stamp=`<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" style="width:130px;height:130px">
+    <circle cx="100" cy="100" r="97" fill="none" stroke="#002288" stroke-width="3.5"/>
+    <circle cx="100" cy="100" r="89" fill="none" stroke="#002288" stroke-width="1"/>
+    <defs>
+      <path id="tA" d="M 16,100 A 84,84 0 0,1 184,100"/>
+      <path id="bA" d="M 16,100 A 84,84 0 0,0 184,100"/>
+    </defs>
+    <text font-family="Arial,sans-serif" font-size="9" font-weight="800" fill="#002288" letter-spacing="1">
+      <textPath href="#tA" startOffset="3%">TRIAGE MEDICAL CONSULTANCY</textPath>
+    </text>
+    <text font-family="'Noto Serif Ethiopic',serif" font-size="8" font-weight="700" fill="#002288" letter-spacing="0.5">
+      <textPath href="#bA" startOffset="5%">ትሪያጅ ሜዲካል ኮንሰልተንሲ</textPath>
+    </text>
+    <g transform="translate(13,100)">
+      <circle r="4" fill="#002288"/>
+      <line x1="0" y1="-7" x2="0" y2="7" stroke="#002288" stroke-width="1.2"/>
+      <line x1="-7" y1="0" x2="7" y2="0" stroke="#002288" stroke-width="1.2"/>
+    </g>
+    <g transform="translate(187,100)">
+      <circle r="4" fill="#002288"/>
+      <line x1="0" y1="-7" x2="0" y2="7" stroke="#002288" stroke-width="1.2"/>
+      <line x1="-7" y1="0" x2="7" y2="0" stroke="#002288" stroke-width="1.2"/>
+    </g>
+    <circle cx="100" cy="100" r="63" fill="none" stroke="#002288" stroke-width="1.8"/>
+    <circle cx="100" cy="100" r="57" fill="none" stroke="#002288" stroke-width="0.8"/>
+    <rect x="94" y="68" width="12" height="38" rx="2" fill="#002288"/>
+    <rect x="81" y="81" width="38" height="12" rx="2" fill="#002288"/>
+    <text x="100" y="128" text-anchor="middle" font-family="Arial,sans-serif" font-size="6" font-weight="800" fill="#002288" letter-spacing="2">OFFICIAL</text>
+  </svg>`;
+
+  // VECTOR SIGNATURE PATH (Provided image rendered into SVG vector)
+  const signatureSVG=`<svg viewBox="0 0 300 400" xmlns="http://www.w3.org/2000/svg" style="width:110px;height:110px;position:absolute;top:-60px;left:55px;pointer-events:none">
+    <path d="M 120 20 C 60 40 30 110 30 180 C 30 250 80 310 90 380 C 95 400 70 380 60 350 C 40 280 130 100 190 20 C 220 10 230 40 210 100 C 180 180 80 250 50 280 C 30 300 10 290 50 270 C 120 240 220 180 290 190 C 300 195 280 230 250 280 C 220 330 230 380 240 390 C 250 400 270 350 280 320" 
+          fill="none" stroke="#000033" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+
+  return `
+  <!-- PAGE 1: TRIAGE & CLINICAL SUMMARY -->
+  <div class="P-page">
+    <div class="P-watermark">CONFIDENTIAL</div>
+
+    <div class="P-hdr">
+      <div class="P-clinic">Triage Medical Consultancy</div>
+      <div class="P-amharic">ትሪያጅ ሜዲካል ኮንሰልተንሲ</div>
+      <div class="P-subtitle">Specialist Medical Triage Services — Addis Ababa, Ethiopia</div>
+      <div class="P-doctitle">Medical Triage Assessment Summary</div>
+      <div class="P-ref">Ref: ${ref} &nbsp;\vert{}&nbsp; ${now}</div>
+    </div>
+
+    <div class="P-sec">
+      <div class="P-seclbl">Triage Classification</div>
+      <div class="P-triage-box ${tClass}">${tDesc[S.triage.toUpperCase()]}</div>
+    </div>
+
+    <div class="P-sec">
+      <div class="P-seclbl">Patient Demographics</div>
+      <table class="P-tbl">
+        <tr><td>Full Name</td><td>${d.fullName||'—'}</td><td>Age / Sex</td><td>${d.age\vert{}\vert{}'—'} yrs / ${d.sex||'—'}</td></tr>
+        <tr><td>Chief Complaint</td><td colspan="3">${d.chiefComplaint||'—'}</td></tr>
+        <tr><td>Duration</td><td>${d.duration\vert{}\vert{}'—'}</td><td>Smoking</td><td>${d.smoking||'—'}</td></tr>
+        <tr><td>Past Medical History</td><td colspan="3">${d.pmh||'None reported'}</td></tr>
+        <tr><td>Current Medications</td><td colspan="3">${d.meds||'None'}</td></tr>
+        <tr><td>Known Allergies</td><td colspan="3">${d.allergies||'NKDA'}</td></tr>
+      </table>
+    </div>
+
+    <div class="P-sec">
+      <div class="P-seclbl">Recorded Vital Signs</div>
+      <table class="P-vit">
+        <thead><tr><th>Parameter</th><th>Recorded Value</th><th>Normal Range</th></tr></thead>
+        <tbody>
+          <tr><td>SpO₂ (O₂ Saturation)</td><td>${vt.spo2?vt.spo2+'%':'—'}</td><td>95–100%</td></tr>
+          <tr><td>Pulse Rate</td><td>${vt.pulse?vt.pulse+' bpm':'—'}</td><td>60–100 bpm</td></tr>
+          <tr><td>Temperature</td><td>${vt.temp?vt.temp+' °C':'—'}</td><td>36.1–37.2 °C</td></tr>
+          <tr><td>Respiratory Rate</td><td>${vt.rr?vt.rr+' /min':'—'}</td><td>12–20 /min</td></tr>
+          <tr><td>Blood Pressure</td><td>${vt.bpS&&vt.bpD?vt.bpS+'/'+vt.bpD+' mmHg':'—'}</td><td>90–140/60–90 mmHg</td></tr>
+          <tr><td>Blood Glucose</td><td>${vt.glucose?vt.glucose+' mmol/L':'—'}</td><td>3.9–7.0 mmol/L</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="P-sec">
+      <div class="P-seclbl">Documented Symptoms</div>
+      <p style="font-size:8.5pt;line-height:1.6">${activeSx.length>0?activeSx.join(' • '):'No specific symptoms recorded.'}</p>
+    </div>
+
+    <div class="P-sec">
+      <div class="P-seclbl">Clinical Advice & Recommendations</div>
+      <div class="P-advice-box ${tClass}">
+        <div style="font-size:8.5pt;font-weight:800;margin-bottom:4px">${adv.headline||''}</div>
+        <ul style="padding-left:14px;font-size:8pt;line-height:1.5">
+          ${(adv.items||[]).map(a=>`<li>${a.text}</li>`).join('')}
+        </ul>
+      </div>
